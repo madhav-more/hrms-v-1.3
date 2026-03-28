@@ -7,11 +7,12 @@ import { applyLeave } from '../../api/leave.api';
 import { useAuth } from '../../context/AuthContext';
 
 const LEAVE_TYPES = [
+  { value: 'Paid', label: 'Paid Leave', desc: 'Monthly accrued paid leave', color: '#10B981' },
   { value: 'Casual', label: 'Casual Leave', desc: 'Personal errands or short breaks', color: '#3B82F6' },
   { value: 'Sick', label: 'Sick Leave', desc: 'Medical illness or health issues', color: '#EF4444' },
-  { value: 'Earned', label: 'Earned / PTO', desc: 'Accrued paid time off', color: '#10B981' },
+  { value: 'Earned', label: 'Earned / PTO', desc: 'Other accrued paid time off', color: '#8B5CF6' },
   { value: 'Unpaid', label: 'Unpaid Leave', desc: 'Leave without pay', color: '#F59E0B' },
-  { value: 'CompOff', label: 'Comp-Off', desc: 'Compensatory off for overtime worked', color: '#8B5CF6' },
+  { value: 'CompOff', label: 'Comp-Off', desc: 'Compensatory off for overtime worked', color: '#6366F1' },
   { value: 'MaternityPaternity', label: 'Maternity / Paternity', desc: 'Parental leave', color: '#EC4899' },
   { value: 'Other', label: 'Other', desc: 'Any other reason', color: '#64748B' },
 ];
@@ -100,6 +101,10 @@ const ApplyLeave = () => {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px' }}>
               {LEAVE_TYPES.map((type) => {
                 const active = form.leaveType === type.value;
+                let balance = null;
+                if (type.value === 'Paid') balance = user?.paidLeaveBalance || 0;
+                if (type.value === 'CompOff') balance = user?.compOffBalance || 0;
+
                 return (
                   <button
                     key={type.value}
@@ -114,10 +119,17 @@ const ApplyLeave = () => {
                     onMouseEnter={e => { if (!active) e.currentTarget.style.borderColor = type.color; }}
                     onMouseLeave={e => { if (!active) e.currentTarget.style.borderColor = '#E2E8F0'; }}
                   >
-                    <div style={{
-                      width: '8px', height: '8px', borderRadius: '50%',
-                      background: type.color, marginBottom: '10px',
-                    }} />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
+                      <div style={{
+                        width: '8px', height: '8px', borderRadius: '50%',
+                        background: type.color,
+                      }} />
+                      {balance !== null && (
+                        <div style={{ fontSize: '0.7rem', fontWeight: 800, background: 'var(--color-surface-alt)', padding: '2px 6px', borderRadius: '6px' }}>
+                          Bal: {balance}
+                        </div>
+                      )}
+                    </div>
                     <div style={{ fontWeight: 700, fontSize: '0.88rem', color: active ? type.color : '#0F172A', marginBottom: '4px' }}>
                       {type.label}
                     </div>
@@ -297,11 +309,15 @@ const ApplyLeave = () => {
                 <div style={{ fontSize: '0.82rem', color: '#047857' }}>
                   {user?.role === 'Director' || user?.role === 'SuperUser'
                     ? 'Your leave will be auto-approved.'
-                    : user?.role === 'GM' || user?.role === 'VP'
+                    : user?.role === 'VP'
                     ? 'Your leave requires Director approval.'
+                    : user?.role === 'GM'
+                    ? 'Your leave requires VP → Director approval.'
                     : user?.role === 'HR'
-                    ? 'Your leave requires GM → Director approval.'
-                    : 'Your leave requires HR → GM → Director approval.'}
+                    ? 'Your leave requires GM → VP → Director approval.'
+                    : user?.role === 'Manager'
+                    ? 'Your leave requires HR → GM → VP → Director approval.'
+                    : 'Your leave requires Manager → HR → GM → VP approval.'}
                 </div>
               </div>
             </div>

@@ -9,6 +9,7 @@ import {
   rejectLeave,
   cancelLeave,
   getLeaveStats,
+  accrueMonthlyLeaves,
 } from '../controllers/leave.controller.js';
 import { verifyJWT } from '../middleware/auth.middleware.js';
 import { authorizeRoles } from '../middleware/role.middleware.js';
@@ -64,5 +65,8 @@ router.patch(
 
 // ── CANCEL (owner or admin) ──
 router.patch('/:id/cancel', cancelLeave);
+
+// ── ACCRUAL (Admin/HR only) ──
+router.post('/accrue-monthly', authorizeRoles('SuperUser', 'HR', 'Director'), accrueMonthlyLeaves);
 
 export default router;

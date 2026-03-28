@@ -30,7 +30,7 @@ const leaveSchema = new mongoose.Schema(
     leaveType: {
       type: String,
       required: true,
-      enum: ['Casual', 'Sick', 'Earned', 'Unpaid', 'CompOff', 'MaternityPaternity', 'Other'],
+      enum: ['Paid', 'Casual', 'Sick', 'Earned', 'Unpaid', 'CompOff', 'MaternityPaternity', 'Other'],
     },
     startDate: { type: Date, required: true },
     endDate: { type: Date, required: true },
@@ -41,12 +41,22 @@ const leaveSchema = new mongoose.Schema(
 
     // ── APPROVAL STATUSES ──
     // "-" means that stage is skipped for this applicant's role
+    managerStatus: {
+      type: String,
+      enum: ['Pending', 'Approved', 'Rejected', '-'],
+      default: 'Pending',
+    },
     hrStatus: {
       type: String,
       enum: ['Pending', 'Approved', 'Rejected', '-'],
       default: 'Pending',
     },
     gmStatus: {
+      type: String,
+      enum: ['Pending', 'Approved', 'Rejected', '-'],
+      default: 'Pending',
+    },
+    vpStatus: {
       type: String,
       enum: ['Pending', 'Approved', 'Rejected', '-'],
       default: 'Pending',
@@ -69,13 +79,15 @@ const leaveSchema = new mongoose.Schema(
     // Tracks which approver role needs to act next
     currentApproverRole: {
       type: String,
-      enum: ['HR', 'GM', 'Director', 'Completed', '-'],
-      default: 'HR',
+      enum: ['Manager', 'HR', 'GM', 'VP', 'Director', 'Completed', '-'],
+      default: 'Manager',
     },
 
     // ── REMARKS ──
+    managerRemarks: { type: String, default: '' },
     hrRemarks: { type: String, default: '' },
     gmRemarks: { type: String, default: '' },
+    vpRemarks: { type: String, default: '' },
     directorRemarks: { type: String, default: '' },
 
     // ── CANCELLATION ──

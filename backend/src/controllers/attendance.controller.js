@@ -1,5 +1,6 @@
 import { Attendance } from '../models/Attendance.model.js';
 import { Employee } from '../models/Employee.model.js';
+import { Holiday } from '../models/Holiday.model.js';
 import { ApiError } from '../utils/ApiError.js';
 import { ApiResponse } from '../utils/ApiResponse.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
@@ -153,6 +154,20 @@ export const checkOut = asyncHandler(async (req, res) => {
   attendance.issuesFaced = issuesFaced;
   attendance.reportParticipants = reportParticipants;
 
+  // ── COMP-OFF EARNING LOGIC ──
+  const isSunday = today.getDay() === 0;
+  const isHoliday = await Holiday.findOne({ date: today });
+  
+  if ((isSunday || isHoliday) && !attendance.isCompOffCredited) {
+    const emp = await Employee.findById(employee._id);
+    if (emp) {
+      emp.compOffBalance = (emp.compOffBalance || 0) + 1;
+      await emp.save();
+      attendance.isCompOffCredited = true;
+      attendance.status = 'Coff'; // Mark as Comp-Off day
+    }
+  }
+
   await attendance.save();
 
   res.status(200).json(
@@ -303,4 +318,146 @@ export const markReportAsRead = asyncHandler(async (req, res) => {
   }
 
   res.json(new ApiResponse(200, attendance, 'Report marked as read'));
+});
+
+// ─── ATTENDANCE CORRECTION ───────────────────────────────────────────────────
+
+export const requestCorrection = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { reason, requestedInTime, requestedOutTime, proofUrl } = req.body;
+
+  if (!reason || !requestedInTime || !requestedOutTime) {
+    throw new ApiError(400, 'Reason and both requested times are required');
+  }
+
+  const attendance = await Attendance.findById(id);
+  if (!attendance) {
+    throw new ApiError(404, 'Attendance record not found');
+  }
+
+  // ── VALIDATION: NO CORRECTION FOR ABSENT, HOLIDAY, WEEKOFF ──
+  if (['A', 'H', 'WO'].includes(attendance.status)) {
+    throw new ApiError(400, `Correction not allowed for ${attendance.status} days`);
+  }
+
+  attendance.correctionRequested = true;
+  attendance.correctionStatus = 'Pending_HR'; // First level is always HR
+  attendance.correctionReason = reason;
+  attendance.correctionProofUrl = proofUrl;
+  attendance.requestedInTime = new Date(requestedInTime);
+  attendance.requestedOutTime = new Date(requestedOutTime);
+  attendance.correctionRequestedOn = new Date();
+  
+  attendance.correctionHistory.push({
+    action: 'Requested',
+    byRole: req.user.role,
+    byEmployeeId: req.user._id,
+    remark: reason
+  });
+
+  await attendance.save();
+  res.status(200).json(new ApiResponse(200, attendance, 'Correction request submitted to HR'));
+});
+
+export const approveCorrection = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { remark } = req.body;
+  const approver = req.user;
+
+  const attendance = await Attendance.findById(id);
+  if (!attendance) {
+    throw new ApiError(404, 'Attendance record not found');
+  }
+
+  const currentStatus = attendance.correctionStatus;
+  
+  // ── ROLE VALIDATION ──
+  const roleSteps = {
+    'Pending_HR': 'HR',
+    'Pending_GM': 'GM',
+    'Pending_VP': 'VP',
+    'Pending_Director': 'Director'
+  };
+
+  if (roleSteps[currentStatus] !== approver.role && approver.role !== 'SuperUser') {
+    throw new ApiError(403, `You are not authorized to approve at ${currentStatus} stage`);
+  }
+
+  // ── PROGRESSION LOGIC ──
+  const nextStatusMap = {
+    'Pending_HR': 'Pending_GM',
+    'Pending_GM': 'Pending_VP',
+    'Pending_VP': 'Pending_Director',
+    'Pending_Director': 'Approved'
+  };
+
+  const nextStatus = nextStatusMap[currentStatus];
+  attendance.correctionStatus = nextStatus;
+
+  attendance.correctionHistory.push({
+    action: 'Approved',
+    byRole: approver.role,
+    byEmployeeId: approver._id,
+    remark: remark || 'Approved'
+  });
+
+  // ── FINAL APPROVAL: UPDATE ATTENDANCE ──
+  if (nextStatus === 'Approved') {
+    attendance.inTime = attendance.requestedInTime;
+    attendance.outTime = attendance.requestedOutTime;
+    
+    // Recalculate hours
+    const workedMs = attendance.outTime - attendance.inTime;
+    attendance.totalMinutes = Math.round(workedMs / 60000);
+    attendance.totalHours = parseFloat((workedMs / 3600000).toFixed(2));
+    
+    // Status update logic (e.g. if hours < 4, it might still be P but we'll handle payroll later)
+    attendance.status = 'P'; 
+    attendance.correctionRequested = false;
+  }
+
+  await attendance.save();
+  res.status(200).json(new ApiResponse(200, attendance, `Correction approved and moved to ${nextStatus}`));
+});
+
+export const rejectCorrection = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { remark } = req.body;
+  const approver = req.user;
+
+  const attendance = await Attendance.findById(id);
+  if (!attendance) {
+    throw new ApiError(404, 'Attendance record not found');
+  }
+
+  attendance.correctionStatus = 'Rejected';
+  attendance.correctionRequested = false;
+  
+  attendance.correctionHistory.push({
+    action: 'Rejected',
+    byRole: approver.role,
+    byEmployeeId: approver._id,
+    remark: remark || 'Rejected'
+  });
+
+  await attendance.save();
+  res.status(200).json(new ApiResponse(200, attendance, 'Correction request rejected'));
+});
+
+export const getPendingCorrections = asyncHandler(async (req, res) => {
+  const role = req.user.role;
+  let query = { correctionRequested: true };
+
+  if (role !== 'SuperUser') {
+    const statusMap = {
+      'HR': 'Pending_HR',
+      'GM': 'Pending_GM',
+      'VP': 'Pending_VP',
+      'Director': 'Pending_Director'
+    };
+    query.correctionStatus = statusMap[role];
+  }
+
+  const records = await Attendance.find(query).sort({ correctionRequestedOn: -1 });
+  res.status(200).json(new ApiResponse(200, records, 'Pending corrections fetched'));
 });

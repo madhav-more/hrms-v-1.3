@@ -6,6 +6,10 @@ import {
   getMySummary,
   getAdminAttendanceList,
   markReportAsRead,
+  requestCorrection,
+  approveCorrection,
+  rejectCorrection,
+  getPendingCorrections,
 } from '../controllers/attendance.controller.js';
 import { verifyJWT } from '../middleware/auth.middleware.js';
 import { authorizeRoles, MANAGEMENT_ROLES } from '../middleware/role.middleware.js';
@@ -23,5 +27,11 @@ router.get('/my-summary', getMySummary);
 // Admin / Management only
 router.get('/admin', authorizeRoles(...MANAGEMENT_ROLES, 'Manager'), getAdminAttendanceList);
 router.patch('/mark-read/:id', authorizeRoles(...MANAGEMENT_ROLES, 'Manager'), markReportAsRead);
+
+// ── CORRECTION ROUTES ──
+router.post('/correction/:id', requestCorrection);
+router.get('/corrections/pending', authorizeRoles(...MANAGEMENT_ROLES, 'Manager'), getPendingCorrections);
+router.patch('/correction-approve/:id', authorizeRoles(...MANAGEMENT_ROLES, 'Manager'), approveCorrection);
+router.patch('/correction-reject/:id', authorizeRoles(...MANAGEMENT_ROLES, 'Manager'), rejectCorrection);
 
 export default router;

@@ -5,7 +5,7 @@ import { ApiResponse } from '../utils/ApiResponse.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
 // ── ROLE CONSTANTS ──
-const APPROVER_ROLES = ['SuperUser', 'HR', 'GM', 'VP', 'Director'];
+const APPROVER_ROLES = ['SuperUser', 'HR', 'GM', 'VP', 'Director', 'Manager'];
 const ADMIN_ROLES = ['SuperUser', 'HR', 'Director'];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -17,67 +17,75 @@ const ADMIN_ROLES = ['SuperUser', 'HR', 'Director'];
  * Mirrors the .NET SetApprovalFlow logic.
  */
 function buildInitialApprovalState(applicantRole) {
+  const base = {
+    managerStatus: '-',
+    hrStatus: '-',
+    gmStatus: '-',
+    vpStatus: '-',
+    directorStatus: '-',
+    overallStatus: 'Pending',
+    currentApproverRole: 'Completed',
+  };
+
   switch (applicantRole) {
     case 'Employee':
     case 'Intern':
-      // Full chain: HR → GM → Director
       return {
+        ...base,
+        managerStatus: 'Pending',
         hrStatus: 'Pending',
         gmStatus: 'Pending',
+        vpStatus: 'Pending',
+        currentApproverRole: 'Manager',
+      };
+
+    case 'Manager':
+      return {
+        ...base,
+        hrStatus: 'Pending',
+        gmStatus: 'Pending',
+        vpStatus: 'Pending',
         directorStatus: 'Pending',
-        overallStatus: 'Pending',
         currentApproverRole: 'HR',
       };
 
     case 'HR':
-      // HR applies: skip HR approval, start at GM
       return {
-        hrStatus: '-',
+        ...base,
         gmStatus: 'Pending',
+        vpStatus: 'Pending',
         directorStatus: 'Pending',
-        overallStatus: 'Pending',
         currentApproverRole: 'GM',
       };
 
     case 'GM':
-    case 'Manager':
-      // GM applies: skip HR & GM, start at Director
       return {
-        hrStatus: '-',
-        gmStatus: '-',
+        ...base,
+        vpStatus: 'Pending',
         directorStatus: 'Pending',
-        overallStatus: 'Pending',
-        currentApproverRole: 'Director',
+        currentApproverRole: 'VP',
       };
 
     case 'VP':
-      // VP same as GM for simplicity
       return {
-        hrStatus: '-',
-        gmStatus: '-',
+        ...base,
         directorStatus: 'Pending',
-        overallStatus: 'Pending',
         currentApproverRole: 'Director',
       };
 
     case 'Director':
     case 'SuperUser':
-      // Director/SuperUser: self-approved
       return {
-        hrStatus: '-',
-        gmStatus: '-',
-        directorStatus: '-',
+        ...base,
         overallStatus: 'Approved',
         currentApproverRole: 'Completed',
       };
 
     default:
       return {
-        hrStatus: 'Pending',
-        gmStatus: 'Pending',
-        directorStatus: 'Pending',
-        overallStatus: 'Pending',
-        currentApproverRole: 'HR',
+        ...base,
+        managerStatus: 'Pending',
+        currentApproverRole: 'Manager',
       };
   }
 }
@@ -95,17 +103,17 @@ function calcTotalDays(start, end, halfDay) {
  * Determine next approver role after a successful approval.
  */
 function getNextApproverRole(currentRole, leave) {
-  if (currentRole === 'HR') {
-    // After HR, go to GM if gmStatus is still Pending
-    if (leave.gmStatus === 'Pending') return 'GM';
-    if (leave.directorStatus === 'Pending') return 'Director';
-    return 'Completed';
+  const steps = ['Manager', 'HR', 'GM', 'VP', 'Director', 'Completed'];
+  const currentIndex = steps.indexOf(currentRole);
+  
+  for (let i = currentIndex + 1; i < steps.length; i++) {
+    const nextRole = steps[i];
+    if (nextRole === 'Completed') return 'Completed';
+    
+    const statusField = `${nextRole.toLowerCase()}Status`;
+    if (leave[statusField] === 'Pending') return nextRole;
   }
-  if (currentRole === 'GM') {
-    if (leave.directorStatus === 'Pending') return 'Director';
-    return 'Completed';
-  }
-  if (currentRole === 'Director') return 'Completed';
+  
   return 'Completed';
 }
 
@@ -125,6 +133,19 @@ export const applyLeave = asyncHandler(async (req, res) => {
   if (end < start) throw new ApiError(400, 'endDate cannot be before startDate');
 
   const totalDays = calcTotalDays(start, end, halfDay);
+  
+  // ── BALANCE VALIDATION ──
+  const employee = await Employee.findById(req.user._id);
+  if (leaveType === 'Paid') {
+    if ((employee.paidLeaveBalance || 0) < totalDays) {
+      throw new ApiError(400, `Insufficient Paid Leave balance. Available: ${employee.paidLeaveBalance || 0}`);
+    }
+  } else if (leaveType === 'CompOff') {
+    if ((employee.compOffBalance || 0) < totalDays) {
+      throw new ApiError(400, `Insufficient Comp-Off balance. Available: ${employee.compOffBalance || 0}`);
+    }
+  }
+
   const approvalState = buildInitialApprovalState(req.user.role);
 
   const leave = await Leave.create({
@@ -225,23 +246,20 @@ export const getPendingLeaves = asyncHandler(async (req, res) => {
 
   let query = {};
   switch (role) {
+    case 'Manager':
+      query = { managerStatus: 'Pending', overallStatus: 'Pending' };
+      break;
     case 'HR':
-      query = { hrStatus: 'Pending', overallStatus: 'Pending' };
+      query = { managerStatus: { $in: ['Approved', '-'] }, hrStatus: 'Pending', overallStatus: 'Pending' };
       break;
     case 'GM':
-    case 'Manager':
       query = { hrStatus: { $in: ['Approved', '-'] }, gmStatus: 'Pending', overallStatus: 'Pending' };
       break;
     case 'VP':
-      query = { hrStatus: { $in: ['Approved', '-'] }, gmStatus: { $in: ['Approved', '-'] }, directorStatus: 'Pending', overallStatus: 'Pending' };
+      query = { gmStatus: { $in: ['Approved', '-'] }, vpStatus: 'Pending', overallStatus: 'Pending' };
       break;
     case 'Director':
-      query = {
-        hrStatus: { $in: ['Approved', '-'] },
-        gmStatus: { $in: ['Approved', '-'] },
-        directorStatus: 'Pending',
-        overallStatus: 'Pending',
-      };
+      query = { vpStatus: { $in: ['Approved', '-'] }, directorStatus: 'Pending', overallStatus: 'Pending' };
       break;
     case 'SuperUser':
       query = { overallStatus: 'Pending' };
@@ -345,31 +363,38 @@ export const approveLeave = asyncHandler(async (req, res) => {
 
   // Validate correct stage
   switch (approverRole) {
+    case 'Manager':
+      if (leave.managerStatus !== 'Pending') throw new ApiError(400, 'Leave is not pending Manager approval');
+      leave.managerStatus = 'Approved';
+      leave.managerRemarks = remarks;
+      break;
     case 'HR':
       if (leave.hrStatus !== 'Pending') throw new ApiError(400, 'Leave is not pending HR approval');
       leave.hrStatus = 'Approved';
       leave.hrRemarks = remarks;
       break;
     case 'GM':
-    case 'Manager':
       if (leave.gmStatus !== 'Pending') throw new ApiError(400, 'Leave is not pending GM approval');
       leave.gmStatus = 'Approved';
       leave.gmRemarks = remarks;
       break;
     case 'VP':
+      if (leave.vpStatus !== 'Pending') throw new ApiError(400, 'Leave is not pending VP approval');
+      leave.vpStatus = 'Approved';
+      leave.vpRemarks = remarks;
+      break;
     case 'Director':
-      if (leave.directorStatus !== 'Pending') throw new ApiError(400, 'Leave is not pending Director/VP approval');
+      if (leave.directorStatus !== 'Pending') throw new ApiError(400, 'Leave is not pending Director approval');
       leave.directorStatus = 'Approved';
       leave.directorRemarks = remarks;
       break;
     case 'SuperUser':
       // SuperUser can approve at any stage
+      if (leave.managerStatus === 'Pending') leave.managerStatus = 'Approved';
       if (leave.hrStatus === 'Pending') leave.hrStatus = 'Approved';
       if (leave.gmStatus === 'Pending') leave.gmStatus = 'Approved';
+      if (leave.vpStatus === 'Pending') leave.vpStatus = 'Approved';
       if (leave.directorStatus === 'Pending') leave.directorStatus = 'Approved';
-      leave.hrRemarks = remarks;
-      leave.gmRemarks = remarks;
-      leave.directorRemarks = remarks;
       break;
     default:
       throw new ApiError(403, 'You do not have approval permissions');
@@ -381,19 +406,34 @@ export const approveLeave = asyncHandler(async (req, res) => {
   if (
     nextRole === 'Completed' ||
     approverRole === 'SuperUser' ||
-    (leave.hrStatus !== 'Pending' || leave.hrStatus === '-') &&
-    (leave.gmStatus !== 'Pending' || leave.gmStatus === '-') &&
-    (leave.directorStatus !== 'Pending' || leave.directorStatus === '-')
+    ((leave.managerStatus !== 'Pending' || leave.managerStatus === '-') &&
+     (leave.hrStatus !== 'Pending' || leave.hrStatus === '-') &&
+     (leave.gmStatus !== 'Pending' || leave.gmStatus === '-') &&
+     (leave.vpStatus !== 'Pending' || leave.vpStatus === '-') &&
+     (leave.directorStatus !== 'Pending' || leave.directorStatus === '-'))
   ) {
-    // Final approval
-    const allDone =
+    // Final check for overall status
+    const allApproved = 
+      (leave.managerStatus === 'Approved' || leave.managerStatus === '-') &&
       (leave.hrStatus === 'Approved' || leave.hrStatus === '-') &&
       (leave.gmStatus === 'Approved' || leave.gmStatus === '-') &&
+      (leave.vpStatus === 'Approved' || leave.vpStatus === '-') &&
       (leave.directorStatus === 'Approved' || leave.directorStatus === '-');
 
-    if (allDone) {
+    if (allApproved) {
       leave.overallStatus = 'Approved';
       leave.currentApproverRole = 'Completed';
+
+      // ── DEDUCT BALANCE ──
+      const employee = await Employee.findById(leave.employeeId);
+      if (employee) {
+        if (leave.leaveType === 'Paid') {
+          employee.paidLeaveBalance = Math.max(0, (employee.paidLeaveBalance || 0) - leave.totalDays);
+        } else if (leave.leaveType === 'CompOff') {
+          employee.compOffBalance = Math.max(0, (employee.compOffBalance || 0) - leave.totalDays);
+        }
+        await employee.save();
+      }
     } else {
       leave.currentApproverRole = nextRole;
     }
@@ -430,24 +470,32 @@ export const rejectLeave = asyncHandler(async (req, res) => {
 
   // Update relevant stage
   switch (approverRole) {
+    case 'Manager':
+      leave.managerStatus = 'Rejected';
+      leave.managerRemarks = remarks;
+      break;
     case 'HR':
       leave.hrStatus = 'Rejected';
       leave.hrRemarks = remarks;
       break;
     case 'GM':
-    case 'Manager':
       leave.gmStatus = 'Rejected';
       leave.gmRemarks = remarks;
       break;
     case 'VP':
+      leave.vpStatus = 'Rejected';
+      leave.vpRemarks = remarks;
+      break;
     case 'Director':
       leave.directorStatus = 'Rejected';
       leave.directorRemarks = remarks;
       break;
     case 'SuperUser':
-      leave.hrStatus = leave.hrStatus === 'Pending' ? 'Rejected' : leave.hrStatus;
-      leave.gmStatus = leave.gmStatus === 'Pending' ? 'Rejected' : leave.gmStatus;
-      leave.directorStatus = leave.directorStatus === 'Pending' ? 'Rejected' : leave.directorStatus;
+      if (leave.managerStatus === 'Pending') leave.managerStatus = 'Rejected';
+      if (leave.hrStatus === 'Pending') leave.hrStatus = 'Rejected';
+      if (leave.gmStatus === 'Pending') leave.gmStatus = 'Rejected';
+      if (leave.vpStatus === 'Pending') leave.vpStatus = 'Rejected';
+      if (leave.directorStatus === 'Pending') leave.directorStatus = 'Rejected';
       break;
   }
 
@@ -525,14 +573,11 @@ export const getLeaveStats = asyncHandler(async (req, res) => {
     byStatus,
   ] = await Promise.all([
     Leave.countDocuments({ overallStatus: 'Pending' }),
-    Leave.countDocuments({ hrStatus: 'Pending', overallStatus: 'Pending' }),
+    Leave.countDocuments({ managerStatus: 'Pending', overallStatus: 'Pending' }),
+    Leave.countDocuments({ managerStatus: { $in: ['Approved', '-'] }, hrStatus: 'Pending', overallStatus: 'Pending' }),
     Leave.countDocuments({ hrStatus: { $in: ['Approved', '-'] }, gmStatus: 'Pending', overallStatus: 'Pending' }),
-    Leave.countDocuments({
-      hrStatus: { $in: ['Approved', '-'] },
-      gmStatus: { $in: ['Approved', '-'] },
-      directorStatus: 'Pending',
-      overallStatus: 'Pending',
-    }),
+    Leave.countDocuments({ gmStatus: { $in: ['Approved', '-'] }, vpStatus: 'Pending', overallStatus: 'Pending' }),
+    Leave.countDocuments({ vpStatus: { $in: ['Approved', '-'] }, directorStatus: 'Pending', overallStatus: 'Pending' }),
     Leave.countDocuments({ overallStatus: 'Approved', startDate: { $gte: startOfMonth, $lte: endOfMonth } }),
     Leave.countDocuments({ overallStatus: 'Rejected', startDate: { $gte: startOfMonth, $lte: endOfMonth } }),
     Leave.countDocuments({ startDate: { $gte: startOfMonth, $lte: endOfMonth } }),
@@ -553,4 +598,32 @@ export const getLeaveStats = asyncHandler(async (req, res) => {
       'Leave stats fetched'
     )
   );
+});
+
+// ─── MONTHLY LEAVE ACCRUAL & SETTLEMENT ──────────────────────────────────────
+
+export const accrueMonthlyLeaves = asyncHandler(async (req, res) => {
+  // This would typically be called by a CRON job or manually by Admin
+  const employees = await Employee.find({ status: 'Active' });
+  const now = new Date();
+  const currentMonth = now.getMonth(); // 0-11 (April is 3)
+  
+  const results = {
+    credited: 0,
+    resetInApril: false
+  };
+
+  // 1. Credit 1 Paid Leave for the current month
+  for (const emp of employees) {
+    emp.paidLeaveBalance = (emp.paidLeaveBalance || 0) + 1;
+    await emp.save();
+    results.credited++;
+  }
+
+  // 2. April Settlement Logic
+  if (currentMonth === 3) { // April is month 4 (UTC) or 3 (0-indexed)
+    results.resetInApril = true;
+  }
+
+  res.status(200).json(new ApiResponse(200, results, 'Monthly leaves accrued successfully'));
 });

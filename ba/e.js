@@ -1,4 +1,8 @@
 import { useState, useEffect } from 'react';
+
+
+
+
 import { useNavigate } from 'react-router-dom';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
@@ -35,7 +39,7 @@ const FormSectio = ({ title, defaultOpen = true, children }) => {
 
 
       </div>
-            {isOpen && (
+      {isOpen && (
         <div style={{ padding: '24px', animation: 'fadeIn 0.3s ease-out' }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
             {children}
@@ -61,11 +65,11 @@ const Field = ({ label, required, children, fullWidth }) => (
   </div>
 );
 // section 3
-const file = ({label , onChange ,file , accept = ".pdf , .jpg , .jpeg , .png" , required})=>{
-<div style={{ border: '1px dashed var(--color-border)', borderRadius: '12px', padding: '16px', textAlign: 'center', background: file ? 'rgba(16,185,129,0.05)' : 'var(--color-surface-alt)', transition: 'all 0.2s', position: 'relative' }}>
-  
+const file = ({ label, onChange, file, accept = ".pdf , .jpg , .jpeg , .png", required }) => {
+  <div style={{ border: '1px dashed var(--color-border)', borderRadius: '12px', padding: '16px', textAlign: 'center', background: file ? 'rgba(16,185,129,0.05)' : 'var(--color-surface-alt)', transition: 'all 0.2s', position: 'relative' }}>
 
-</div>
+
+  </div>
 }
 //section4
 const FileUploadField = ({ label, onChange, file, accept = ".pdf,.jpg,.jpeg,.png", required }) => (

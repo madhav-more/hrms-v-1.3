@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import {
   LayoutDashboard, Clock, Users, LogOut, ChevronRight,
   User, Shield, Bell, Search, Settings, CalendarDays, Megaphone,
-  ChevronDown, Hexagon
+  ChevronDown, Hexagon, Calendar, DollarSign, CheckCircle
 } from 'lucide-react';
 import theme from '../../theme';
 import { getUnreadCount } from '../../api/announcement.api';
@@ -37,6 +37,7 @@ const navGroups = [
         children: [
           { label: 'Attendance Page', path: '/attendance', roles: ['SuperUser', 'HR', 'Manager', 'Director', 'VP', 'GM', 'Employee', 'Intern'] },
           { label: 'Attendance Summary', path: '/attendance/summary', roles: ['SuperUser', 'HR', 'Manager', 'Director', 'VP', 'GM', 'Employee', 'Intern'] },
+          { label: 'Correction Approvals', path: '/attendance/corrections', roles: ['SuperUser', 'HR', 'Director', 'VP', 'GM', 'Manager'] },
           { label: 'Daily Reports', path: '/attendance/reports', roles: ['SuperUser', 'HR', 'Director', 'VP', 'GM', 'Manager'] },
           { label: 'Admin Attendance', path: '/attendance/admin', roles: ['SuperUser', 'HR', 'Director'] },
         ]
@@ -49,6 +50,14 @@ const navGroups = [
           { label: 'Leave Dashboard', path: '/leave-dashboard', roles: ['SuperUser', 'HR', 'Director'] },
         ]
       },
+      { 
+        icon: DollarSign, label: 'Payroll', roles: ['SuperUser', 'HR', 'Manager', 'Director', 'VP', 'GM', 'Employee', 'Intern'],
+        children: [
+          { label: 'My Pay Slips', path: '/payroll/my', roles: ['SuperUser', 'HR', 'Manager', 'Director', 'VP', 'GM', 'Employee', 'Intern'] },
+          { label: 'Payroll Admin', path: '/payroll', roles: ['SuperUser', 'HR', 'Director'] },
+        ]
+      },
+      { icon: Calendar, label: 'Holiday Calendar', path: '/holidays', roles: ['SuperUser', 'HR', 'Manager', 'Director', 'VP', 'GM', 'Employee', 'Intern'] },
       { icon: Users, label: 'Employees', path: '/employees', roles: ['SuperUser', 'HR', 'Director', 'VP', 'GM', 'Manager'] },
     ]
   },

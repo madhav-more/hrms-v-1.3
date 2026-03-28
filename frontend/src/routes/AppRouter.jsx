@@ -19,6 +19,10 @@ import LeaveApproval from '../pages/leaves/LeaveApproval';
 import LeaveDashboard from '../pages/leaves/LeaveDashboard';
 import Announcements from '../pages/announcements/Announcements';
 import ManageAnnouncements from '../pages/announcements/ManageAnnouncements';
+import HolidayManagement from '../pages/holidays/HolidayManagement';
+import CorrectionApproval from '../pages/attendance/CorrectionApproval';
+import PayrollDashboard from '../pages/payroll/PayrollDashboard';
+import EmployeePayroll from '../pages/payroll/EmployeePayroll';
 
 const CAN_CREATE = ['SuperUser', 'HR', 'Director', 'VP', 'GM'];
 const ALL_ROLES = ['SuperUser', 'HR', 'Manager', 'Director', 'VP', 'GM', 'Employee', 'Intern'];
@@ -65,6 +69,9 @@ const AppRouter = () => (
         <Route path="/attendance/reports" element={
           <ProtectedRoute allowedRoles={MANAGEMENT_PLUS}><DailyReports /></ProtectedRoute>
         } />
+        <Route path="/attendance/corrections" element={
+          <ProtectedRoute allowedRoles={MANAGEMENT_PLUS}><CorrectionApproval /></ProtectedRoute>
+        } />
 
         {/* Leaves */}
         <Route path="/leaves" element={
@@ -78,6 +85,19 @@ const AppRouter = () => (
         } />
         <Route path="/leave-dashboard" element={
           <ProtectedRoute allowedRoles={['SuperUser', 'HR', 'Director']}><LeaveDashboard /></ProtectedRoute>
+        } />
+
+        {/* Holidays */}
+        <Route path="/holidays" element={
+          <ProtectedRoute allowedRoles={ALL_ROLES}><HolidayManagement /></ProtectedRoute>
+        } />
+
+        {/* Payroll */}
+        <Route path="/payroll" element={
+          <ProtectedRoute allowedRoles={['SuperUser', 'HR', 'Director']}><PayrollDashboard /></ProtectedRoute>
+        } />
+        <Route path="/payroll/my" element={
+          <ProtectedRoute allowedRoles={ALL_ROLES}><EmployeePayroll /></ProtectedRoute>
         } />
 
         {/* Announcements */}

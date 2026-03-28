@@ -13,6 +13,8 @@ import attendanceRoutes from './routes/attendance.routes.js';
 import employeeRoutes from './routes/employee.routes.js';
 import leaveRoutes from './routes/leave.routes.js';
 import announcementRoutes from './routes/announcement.routes.js';
+import holidayRoutes from './routes/holiday.routes.js';
+import payrollRoutes from './routes/payroll.routes.js';
 
 const app = express();
 
@@ -45,6 +47,8 @@ app.use('/api/attendance', attendanceRoutes);
 app.use('/api/employees', employeeRoutes);
 app.use('/api/leaves', leaveRoutes);
 app.use('/api/announcements', announcementRoutes);
+app.use('/api/holidays', holidayRoutes);
+app.use('/api/payroll', payrollRoutes);
 
 // ─── ERROR HANDLING ────────────────────────────────────────────────────────
 app.use(notFoundHandler);

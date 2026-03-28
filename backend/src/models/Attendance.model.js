@@ -44,16 +44,33 @@ const attendanceSchema = new mongoose.Schema(
     correctionRequested: { type: Boolean, default: false },
     correctionStatus: {
       type: String,
-      enum: ['None', 'Pending', 'Approved', 'Rejected'],
+      enum: [
+        'None', 
+        'Pending_HR', 
+        'Pending_GM', 
+        'Pending_VP', 
+        'Pending_Director', 
+        'Approved', 
+        'Rejected'
+      ],
       default: 'None',
     },
-    correctionRemark: { type: String },
+    correctionReason: { type: String },
     correctionProofUrl: { type: String }, // Cloudinary URL
     correctionRequestedOn: { type: Date },
-    reviewedBy: { type: String },
-    reviewedOn: { type: Date },
-    requestedByRole: { type: String },
-    pendingWithRole: { type: String },
+    
+    // Requested Values
+    requestedInTime: { type: Date },
+    requestedOutTime: { type: Date },
+
+    // Audit
+    correctionHistory: [{
+      action: { type: String, enum: ['Requested', 'Approved', 'Rejected'] },
+      byRole: { type: String },
+      byEmployeeId: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
+      remark: { type: String },
+      timestamp: { type: Date, default: Date.now }
+    }],
 
     // ── COMP OFF ──
     isCompOffCredited: { type: Boolean, default: false },

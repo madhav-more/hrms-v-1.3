@@ -109,8 +109,9 @@ const employeeSchema = new mongoose.Schema(
     doctorName: { type: String },
     doctorContact: { type: String },
 
-    // ── COMP OFF ──
+    // ── LEAVE BALANCES ──
     compOffBalance: { type: Number, default: 0 },
+    paidLeaveBalance: { type: Number, default: 0 },
     lastWorkingDate: { type: Date },
 
     // ── REFRESH TOKENS ──
