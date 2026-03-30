@@ -5,10 +5,11 @@ import toast from 'react-hot-toast';
 import {
   LayoutDashboard, Clock, Users, LogOut, ChevronRight,
   User, Shield, Bell, Search, Settings, CalendarDays, Megaphone,
-  ChevronDown, Hexagon, Calendar, DollarSign, CheckCircle
+  ChevronDown, Hexagon, Calendar, DollarSign, CheckCircle, Menu, X
 } from 'lucide-react';
 import theme from '../../theme';
 import { getUnreadCount } from '../../api/announcement.api';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const navGroups = [
   { 
@@ -90,6 +91,10 @@ const AppShell = ({ children }) => {
   const [scrolled, setScrolled] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   
+  // Responsive / Mobile States
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  
   // Keep track of which menu groups are expanded
   const [expandedMenus, setExpandedMenus] = useState({});
 
@@ -114,8 +119,15 @@ const AppShell = ({ children }) => {
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 10);
+    const handleResize = () => setIsMobile(window.innerWidth < 1024);
+    
     window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
+    window.addEventListener('resize', handleResize);
+    
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('resize', handleResize);
+    };
   }, []);
 
   // Auto-expand menus based on current location
@@ -152,13 +164,28 @@ const AppShell = ({ children }) => {
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#FAFAFA', fontFamily: "'Inter', sans-serif" }}>
       
+      {/* ── MOBILE BACKDROP ── */}
+      <AnimatePresence>
+        {isMobile && mobileMenuOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setMobileMenuOpen(false)}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(4px)', zIndex: 1050 }}
+          />
+        )}
+      </AnimatePresence>
+
       {/* ── SIDEBAR ── */}
       <aside style={{
-        width: `${sidebarWidth}px`,
+        width: isMobile ? '280px' : `${sidebarWidth}px`,
         background: theme.colors.surface,
         display: 'flex', flexDirection: 'column',
-        transition: 'width 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
-        position: 'fixed', top: 0, left: 0, height: '100vh', zIndex: 100,
+        transition: 'transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), width 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
+        position: 'fixed', top: 0, 
+        left: isMobile ? (mobileMenuOpen ? 0 : '-280px') : 0, 
+        height: '100vh', zIndex: 1100,
         borderRight: '1px solid rgba(226, 232, 240, 0.6)',
         boxShadow: '4px 0 24px rgba(0,0,0,0.02)',
       }}>
@@ -183,8 +210,10 @@ const AppShell = ({ children }) => {
           </div>
           
           <div style={{ 
-            opacity: collapsed ? 0 : 1, transform: collapsed ? 'translateX(-10px)' : 'translateX(0)',
-            transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)', whiteSpace: 'nowrap', overflow: 'hidden'
+            opacity: isMobile || !collapsed ? 1 : 0, 
+            transform: !isMobile && collapsed ? 'translateX(-10px)' : 'translateX(0)',
+            transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)', whiteSpace: 'nowrap', overflow: 'hidden',
+            flex: 1
           }}>
             <div style={{ color: '#111827', fontWeight: 800, fontSize: '1.15rem', letterSpacing: '-0.02em', lineHeight: '1.2' }}>
               INFINITY
@@ -193,6 +222,16 @@ const AppShell = ({ children }) => {
               Arthhvisva OS
             </div>
           </div>
+
+          {isMobile && (
+            <button 
+              onClick={() => setMobileMenuOpen(false)}
+              className="icon-btn"
+              style={{ width: '32px', height: '32px' }}
+            >
+              <X size={18} />
+            </button>
+          )}
         </div>
 
         {/* Navigation */}
@@ -396,26 +435,30 @@ const AppShell = ({ children }) => {
           )}
         </div>
 
-        {/* Sidebar Toggle */}
-        <button
-          onClick={() => setCollapsed(!collapsed)}
-          style={{
-            position: 'absolute', top: '34px', right: '-14px', width: '28px', height: '28px',
-            borderRadius: '50%', background: '#fff', border: '1px solid #E2E8F0',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.08)', color: '#64748B', zIndex: 10,
-            transition: 'all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
-          }}
-          onMouseEnter={e => { e.currentTarget.style.color = '#111827'; e.currentTarget.style.transform = 'scale(1.1)'; }}
-          onMouseLeave={e => { e.currentTarget.style.color = '#64748B'; e.currentTarget.style.transform = 'scale(1)'; }}
-        >
-          <ChevronRight size={16} strokeWidth={2.5} style={{ transform: collapsed ? 'rotate(0deg)' : 'rotate(180deg)', transition: 'transform 0.4s cubic-bezier(0.4, 0, 0.2, 1)' }} />
-        </button>
+        {/* Sidebar Toggle (Only on Desktop) */}
+        {!isMobile && (
+          <button
+            onClick={() => setCollapsed(!collapsed)}
+            style={{
+              position: 'absolute', top: '34px', right: '-14px', width: '28px', height: '28px',
+              borderRadius: '50%', background: '#fff', border: '1px solid #E2E8F0',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.08)', color: '#64748B', zIndex: 10,
+              transition: 'all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
+            }}
+            onMouseEnter={e => { e.currentTarget.style.color = '#111827'; e.currentTarget.style.transform = 'scale(1.1)'; }}
+            onMouseLeave={e => { e.currentTarget.style.color = '#64748B'; e.currentTarget.style.transform = 'scale(1)'; }}
+          >
+            <ChevronRight size={16} strokeWidth={2.5} style={{ transform: collapsed ? 'rotate(0deg)' : 'rotate(180deg)', transition: 'transform 0.4s cubic-bezier(0.4, 0, 0.2, 1)' }} />
+          </button>
+        )}
       </aside>
 
       {/* ── MAIN CONTENT ── */}
       <div style={{ 
-        flex: 1, marginLeft: `${sidebarWidth}px`, display: 'flex', flexDirection: 'column', 
+        flex: 1, 
+        marginLeft: isMobile ? 0 : `${sidebarWidth}px`, 
+        display: 'flex', flexDirection: 'column', 
         transition: 'margin-left 0.4s cubic-bezier(0.16, 1, 0.3, 1)', minWidth: 0, position: 'relative'
       }}>
         
@@ -430,17 +473,25 @@ const AppShell = ({ children }) => {
         }}>
           {/* Brand/Context Left */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: '12px', background: '#F1F5F9',
-              padding: '10px 16px', borderRadius: '12px', color: '#64748B', fontSize: '0.9rem',
-              border: '1px solid #E2E8F0'
-            }}>
-               <Search size={18} />
-               <input 
-                 type="text" placeholder="Quick search..." 
-                 style={{ border: 'none', background: 'transparent', outline: 'none', width: '200px', fontSize: '0.9rem', color: '#111827' }} 
-               />
-            </div>
+            {isMobile && (
+              <button onClick={() => setMobileMenuOpen(true)} className="icon-btn" style={{ marginRight: '8px' }}>
+                <Menu size={20} color="#111827" />
+              </button>
+            )}
+            
+            {!isMobile && (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: '12px', background: '#F1F5F9',
+                padding: '10px 16px', borderRadius: '12px', color: '#64748B', fontSize: '0.9rem',
+                border: '1px solid #E2E8F0'
+              }}>
+                 <Search size={18} />
+                 <input 
+                   type="text" placeholder="Quick search..." 
+                   style={{ border: 'none', background: 'transparent', outline: 'none', width: '200px', fontSize: '0.9rem', color: '#111827' }} 
+                 />
+              </div>
+            )}
           </div>
 
           {/* User & Actions Right */}
@@ -485,7 +536,7 @@ const AppShell = ({ children }) => {
         </header>
 
         {/* Page Content */}
-        <main style={{ flex: 1, padding: '32px 40px', maxWidth: '1600px', margin: '0 auto', width: '100%' }}>
+        <main style={{ flex: 1, padding: isMobile ? '16px' : '32px 40px', maxWidth: '1600px', margin: '0 auto', width: '100%', overflowX: 'hidden' }}>
           {children}
         </main>
       </div>
@@ -523,6 +574,19 @@ const AppShell = ({ children }) => {
         @keyframes slideInY {
           from { transform: scaleY(0); opacity: 0; }
           to { transform: scaleY(1); opacity: 1; }
+        }
+        
+        /* Responsive adjustments */
+        @media (max-width: 1024px) {
+          .page-wrapper {
+            padding: 16px !important;
+          }
+          header h1 {
+            font-size: 1.8rem !important;
+          }
+          .data-table {
+            font-size: 0.85rem !important;
+          }
         }
       `}</style>
     </div>

@@ -15,6 +15,12 @@ const CorrectionApproval = () => {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(null);
   const [remarks, setRemarks] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const filteredRequests = requests.filter(req => 
+    req.employeeName?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    req.employeeCode?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   const fetchRequests = useCallback(async () => {
     setLoading(true);
@@ -55,9 +61,24 @@ const CorrectionApproval = () => {
   return (
     <AppShell>
       <div className="page-wrapper fade-in" style={{ padding: '32px' }}>
-        <header style={{ marginBottom: '40px' }}>
-          <h1 style={{ fontSize: '2.4rem', fontWeight: 900, letterSpacing: '-0.03em' }}>Attendance Corrections</h1>
-          <p style={{ color: 'var(--color-text-secondary)', fontWeight: 500 }}>Review and approve employee-requested attendance adjustments</p>
+        <header style={{ marginBottom: '40px', display: 'flex', flexWrap: 'wrap', gap: '20px', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+          <div>
+            <h1 style={{ fontSize: '2.4rem', fontWeight: 900, letterSpacing: '-0.03em' }}>Attendance Corrections</h1>
+            <p style={{ color: 'var(--color-text-secondary)', fontWeight: 500 }}>Review and approve employee-requested attendance adjustments</p>
+          </div>
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <div style={{ position: 'relative' }}>
+              <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-tertiary)' }} />
+              <input 
+                type="text" 
+                placeholder="Search employee..." 
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="input-field"
+                style={{ paddingLeft: '40px', width: '250px' }}
+              />
+            </div>
+          </div>
         </header>
 
         {loading ? (
@@ -66,8 +87,8 @@ const CorrectionApproval = () => {
           </div>
         ) : (
           <div className="grid-container" style={{ display: 'grid', gap: '24px' }}>
-            {requests.length > 0 ? (
-              requests.map((req) => (
+            {filteredRequests.length > 0 ? (
+              filteredRequests.map((req) => (
                 <motion.div
                   key={req._id}
                   initial={{ opacity: 0, y: 20 }}
@@ -128,7 +149,7 @@ const CorrectionApproval = () => {
                       </div>
 
                       {/* Approval Actions */}
-                      <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                      <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                         <input 
                           type="text" 
                           placeholder="Remarks..." 
@@ -139,6 +160,7 @@ const CorrectionApproval = () => {
                         <button 
                           onClick={() => handleAction(req._id, 'approve')}
                           disabled={actionLoading === req._id}
+                          className="btn-primary"
                           style={{ padding: '8px 16px', borderRadius: '12px', background: '#10B981', color: '#fff', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}
                         >
                           {actionLoading === req._id ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} Approve
@@ -146,6 +168,7 @@ const CorrectionApproval = () => {
                         <button 
                           onClick={() => handleAction(req._id, 'reject')}
                           disabled={actionLoading === req._id}
+                          className="btn-primary"
                           style={{ padding: '8px 16px', borderRadius: '12px', background: '#EF4444', color: '#fff', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}
                         >
                           {actionLoading === req._id ? <Loader2 size={16} className="animate-spin" /> : <XCircle size={16} />} Reject
@@ -158,9 +181,9 @@ const CorrectionApproval = () => {
               ))
             ) : (
               <div style={{ textAlign: 'center', padding: '100px', color: 'var(--color-text-tertiary)' }}>
-                <CheckCircle2 size={64} style={{ opacity: 0.1, marginBottom: '20px' }} />
+                <CheckCircle2 size={64} style={{ opacity: 0.1, marginBottom: '20px', margin: '0 auto' }} />
                 <h3 style={{ fontSize: '1.4rem', fontWeight: 800 }}>All catch up!</h3>
-                <p>No pending attendance correction requests.</p>
+                <p>No pending attendance correction requests found.</p>
               </div>
             )}
           </div>

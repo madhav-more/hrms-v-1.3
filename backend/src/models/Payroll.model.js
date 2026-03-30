@@ -16,13 +16,14 @@ const payrollSchema = new mongoose.Schema(
     year: { type: Number, required: true },
     fromDate: { type: Date, required: true },
     toDate: { type: Date, required: true },
-    
     // ── ATTENDANCE SUMMARY ──
     totalDaysInMonth: { type: Number, required: true },
     workingDays: { type: Number, default: 0 },
     presentDays: { type: Number, default: 0 },
     halfDays: { type: Number, default: 0 },
+    halfDayDetails: [{ date: Date, reason: String }], // To track specific half days
     absentDays: { type: Number, default: 0 },
+    absentDayDetails: [{ date: Date, reason: String }], // To track specific absent dates
     paidLeaves: { type: Number, default: 0 },
     unpaidLeaves: { type: Number, default: 0 },
     holidays: { type: Number, default: 0 },

@@ -27,40 +27,14 @@ const calculatePT = (salary, gender, month) => {
   }
 };
 
-// ─── GENERATE PAYROLL ────────────────────────────────────────────────────────
+// ─── GENERATE PAYROLL (HELPER FOR SINGLE EMPLOYEE) ──────────────────────────
 
-export const generatePayroll = asyncHandler(async (req, res) => {
-  const { employeeId, month, year, startDate, endDate } = req.body;
-
-  if (!employeeId) throw new ApiError(400, 'employeeId is required');
-
-  let fromDate, toDate;
-  let targetMonth, targetYear;
-
-  if (startDate && endDate) {
-    fromDate = new Date(startDate);
-    fromDate.setHours(0, 0, 0, 0);
-    toDate = new Date(endDate);
-    toDate.setHours(23, 59, 59, 999);
-    targetMonth = toDate.getMonth() + 1;
-    targetYear = toDate.getFullYear();
-  } else if (month && year) {
-    // 21st of prev month to 20th of current month
-    fromDate = new Date(year, month - 2, 21);
-    fromDate.setHours(0, 0, 0, 0);
-    toDate = new Date(year, month - 1, 20);
-    toDate.setHours(23, 59, 59, 999);
-    targetMonth = month;
-    targetYear = year;
-  } else {
-    throw new ApiError(400, 'Either startDate/endDate or month/year is required');
-  }
-
+const processSingleEmployeePayroll = async ({ employeeId, fromDate, toDate, targetMonth, targetYear, processedBy }) => {
   const employee = await Employee.findById(employeeId);
-  if (!employee) throw new ApiError(404, 'Employee not found');
+  if (!employee) return null;
 
-  // Total days in the ACTUAL range
-  const totalDaysInRange = Math.round((toDate - fromDate) / (1000 * 60 * 60 * 24)) + 1;
+  // Fix: Total days in range should be exactly the number of days between dates
+  const totalDaysInRange = Math.round((toDate - fromDate) / (1000 * 60 * 60 * 24));
 
   // ── FETCH ATTENDANCE & HOLIDAYS ──
   const [attendanceRecords, holidayRecords] = await Promise.all([
@@ -82,7 +56,9 @@ export const generatePayroll = asyncHandler(async (req, res) => {
     weekOff: 0
   };
 
-  // Iterate literal days in the range
+  const halfDayDetails = [];
+  const absentDayDetails = [];
+
   let current = new Date(fromDate);
   while (current <= toDate) {
     const dStr = current.toDateString();
@@ -96,62 +72,120 @@ export const generatePayroll = asyncHandler(async (req, res) => {
       summary.holiday++;
     } else if (record) {
       if (record.status === 'P') {
-        if (record.totalHours < 4) summary.half++;
-        else summary.present++;
+        if (record.totalHours < 4) {
+          summary.half++;
+          halfDayDetails.push({ date: new Date(current), reason: `Worked ${record.totalHours} hrs` });
+        } else {
+          summary.present++;
+        }
       } else if (['Paid', 'Sick', 'Casual', 'Earned', 'CompOff', 'L'].includes(record.status)) {
         summary.paidLeave++;
       } else {
         summary.absent++;
+        absentDayDetails.push({ date: new Date(current), reason: `Status: ${record.status}` });
       }
     } else {
       summary.absent++;
+      absentDayDetails.push({ date: new Date(current), reason: 'No Check-in' });
     }
-    
-    // Safety increment to avoid infinite loop
     current = new Date(current.getTime() + 86400000);
   }
 
   const paidDays = summary.present + (summary.half * 0.5) + summary.paidLeave + summary.weekOff + summary.holiday;
-  
   const baseSalary = employee.salary || 0;
-  // Use a standard monthly divisor of 30 to ensure pro-rata works correctly across custom 21-20 cycles
   const dailyRate = baseSalary / 30; 
   const grossEarnings = parseFloat((dailyRate * paidDays).toFixed(2));
   const professionalTax = calculatePT(grossEarnings, employee.gender, toDate.getMonth());
   const netSalary = grossEarnings - professionalTax;
 
-  // Create or Update Payroll record using Month/Year as key to prevent duplicate key errors with unique index
-  const payroll = await Payroll.findOneAndUpdate(
-    { 
-      employeeId, 
-      month: targetMonth, 
-      year: targetYear 
-    },
+  return await Payroll.findOneAndUpdate(
+    { employeeId, month: targetMonth, year: targetYear },
     {
       employeeCode: employee.employeeCode,
       employeeName: employee.name,
-      fromDate,
-      toDate,
+      fromDate, toDate,
       totalDaysInMonth: totalDaysInRange,
       presentDays: summary.present,
       halfDays: summary.half,
+      halfDayDetails,
       absentDays: summary.absent,
+      absentDayDetails,
       paidLeaves: summary.paidLeave,
       holidays: summary.holiday,
       weekOffs: summary.weekOff,
-      paidDays,
-      baseSalary,
-      grossEarnings,
-      professionalTax,
-      netSalary,
+      paidDays, baseSalary, grossEarnings, professionalTax, netSalary,
       status: 'Processed',
-      processedBy: req.user._id
+      processedBy
     },
     { upsert: true, new: true }
   );
+};
 
+// ─── GENERATE PAYROLL ENDPOINT ───────────────────────────────────────────────
+
+export const generatePayroll = asyncHandler(async (req, res) => {
+  const { employeeId, month, year, startDate, endDate } = req.body;
+  if (!employeeId) throw new ApiError(400, 'employeeId is required');
+
+  let fromDate, toDate;
+  let targetMonth, targetYear;
+
+  if (startDate && endDate) {
+    fromDate = new Date(startDate);
+    fromDate.setHours(0, 0, 0, 0);
+    toDate = new Date(endDate);
+    toDate.setHours(23, 59, 59, 999);
+    targetMonth = toDate.getMonth() + 1;
+    targetYear = toDate.getFullYear();
+  } else if (month && year) {
+    fromDate = new Date(year, month - 2, 21);
+    fromDate.setHours(0, 0, 0, 0);
+    toDate = new Date(year, month - 1, 20);
+    toDate.setHours(23, 59, 59, 999);
+    targetMonth = month;
+    targetYear = year;
+  } else {
+    throw new ApiError(400, 'Either startDate/endDate or month/year is required');
+  }
+
+  const payroll = await processSingleEmployeePayroll({
+    employeeId, fromDate, toDate, targetMonth, targetYear, processedBy: req.user._id
+  });
+
+  if (!payroll) throw new ApiError(404, 'Employee not found');
   res.status(200).json(new ApiResponse(200, payroll, 'Payroll generated successfully'));
 });
+
+// ─── GENERATE ALL PAYROLL (BULK) ─────────────────────────────────────────────
+
+export const generateAllPayroll = asyncHandler(async (req, res) => {
+  const { startDate, endDate } = req.body;
+  if (!startDate || !endDate) throw new ApiError(400, 'startDate and endDate are required');
+
+  const fromDate = new Date(startDate);
+  fromDate.setHours(0, 0, 0, 0);
+  const toDate = new Date(endDate);
+  toDate.setHours(23, 59, 59, 999);
+  const targetMonth = toDate.getMonth() + 1;
+  const targetYear = toDate.getFullYear();
+
+  const employees = await Employee.find({ status: 'Active' });
+  
+  const results = [];
+  for (const emp of employees) {
+    try {
+      const payroll = await processSingleEmployeePayroll({
+        employeeId: emp._id, fromDate, toDate, targetMonth, targetYear, processedBy: req.user._id
+      });
+      if (payroll) results.push(payroll);
+    } catch (err) {
+      console.error(`Failed for ${emp.name}:`, err);
+    }
+  }
+
+  res.status(200).json(new ApiResponse(200, { count: results.length }, `Successfully processed payroll for ${results.length} employees`));
+});
+
 
 // ─── GET PAYROLL LIST ────────────────────────────────────────────────────────
 

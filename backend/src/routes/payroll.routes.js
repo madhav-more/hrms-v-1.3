@@ -1,6 +1,7 @@
 import express from 'express';
 import { 
   generatePayroll, 
+  generateAllPayroll,
   getPayrollList, 
   getSalarySlip 
 } from '../controllers/payroll.controller.js';
@@ -14,6 +15,7 @@ router.use(verifyJWT);
 
 // ── ADMIN / HR ONLY ──
 router.post('/generate', authorizeRoles('SuperUser', 'HR', 'Director'), generatePayroll);
+router.post('/generate-all', authorizeRoles('SuperUser', 'HR', 'Director'), generateAllPayroll);
 router.get('/list', authorizeRoles(...ALL_ROLES), getPayrollList);
 
 // ── INDIVIDUAL ACCESS ──

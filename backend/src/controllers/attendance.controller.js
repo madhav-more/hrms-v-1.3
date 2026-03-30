@@ -341,7 +341,16 @@ export const requestCorrection = asyncHandler(async (req, res) => {
   }
 
   attendance.correctionRequested = true;
-  attendance.correctionStatus = 'Pending_HR'; // First level is always HR
+
+  // ── ROLE-BASED ROUTING ──
+  const role = req.user.role;
+  let assignedStatus = 'Pending_HR';
+  if (role === 'HR') assignedStatus = 'Pending_GM';
+  else if (role === 'GM' || role === 'General Manager') assignedStatus = 'Pending_VP';
+  else if (role === 'VP' || role === 'Vice President') assignedStatus = 'Pending_Director';
+  else if (role === 'Director') assignedStatus = 'Approved'; // Self-approved
+
+  attendance.correctionStatus = assignedStatus;
   attendance.correctionReason = reason;
   attendance.correctionProofUrl = proofUrl;
   attendance.requestedInTime = new Date(requestedInTime);
@@ -350,13 +359,31 @@ export const requestCorrection = asyncHandler(async (req, res) => {
   
   attendance.correctionHistory.push({
     action: 'Requested',
-    byRole: req.user.role,
+    byRole: role,
     byEmployeeId: req.user._id,
     remark: reason
   });
 
+  // If Director, auto-approve immediately
+  if (assignedStatus === 'Approved') {
+    attendance.inTime = attendance.requestedInTime;
+    attendance.outTime = attendance.requestedOutTime;
+    const workedMs = attendance.outTime - attendance.inTime;
+    attendance.totalMinutes = Math.round(workedMs / 60000);
+    attendance.totalHours = parseFloat((workedMs / 3600000).toFixed(2));
+    attendance.status = 'P';
+    attendance.correctionRequested = false;
+    attendance.correctionHistory.push({
+      action: 'Approved',
+      byRole: role,
+      byEmployeeId: req.user._id,
+      remark: 'Auto-approved (Self Corrected)'
+    });
+  }
+
   await attendance.save();
-  res.status(200).json(new ApiResponse(200, attendance, 'Correction request submitted to HR'));
+  const msg = assignedStatus === 'Approved' ? 'Correction auto-approved' : `Correction request submitted to ${assignedStatus.split('_')[1]}`;
+  res.status(200).json(new ApiResponse(200, attendance, msg));
 });
 
 export const approveCorrection = asyncHandler(async (req, res) => {
@@ -383,15 +410,9 @@ export const approveCorrection = asyncHandler(async (req, res) => {
     throw new ApiError(403, `You are not authorized to approve at ${currentStatus} stage`);
   }
 
-  // ── PROGRESSION LOGIC ──
-  const nextStatusMap = {
-    'Pending_HR': 'Pending_GM',
-    'Pending_GM': 'Pending_VP',
-    'Pending_VP': 'Pending_Director',
-    'Pending_Director': 'Approved'
-  };
-
-  const nextStatus = nextStatusMap[currentStatus];
+  // ── 1-STEP PROGRESSION LOGIC ──
+  // Based on requirements, once the targeted approver accepts, the request is closed immediately.
+  const nextStatus = 'Approved';
   attendance.correctionStatus = nextStatus;
 
   attendance.correctionHistory.push({
@@ -402,22 +423,20 @@ export const approveCorrection = asyncHandler(async (req, res) => {
   });
 
   // ── FINAL APPROVAL: UPDATE ATTENDANCE ──
-  if (nextStatus === 'Approved') {
-    attendance.inTime = attendance.requestedInTime;
-    attendance.outTime = attendance.requestedOutTime;
-    
-    // Recalculate hours
-    const workedMs = attendance.outTime - attendance.inTime;
-    attendance.totalMinutes = Math.round(workedMs / 60000);
-    attendance.totalHours = parseFloat((workedMs / 3600000).toFixed(2));
-    
-    // Status update logic (e.g. if hours < 4, it might still be P but we'll handle payroll later)
-    attendance.status = 'P'; 
-    attendance.correctionRequested = false;
-  }
+  attendance.inTime = attendance.requestedInTime;
+  attendance.outTime = attendance.requestedOutTime;
+  
+  // Recalculate hours
+  const workedMs = attendance.outTime - attendance.inTime;
+  attendance.totalMinutes = Math.round(workedMs / 60000);
+  attendance.totalHours = parseFloat((workedMs / 3600000).toFixed(2));
+  
+  // Status update logic
+  attendance.status = 'P'; 
+  attendance.correctionRequested = false;
 
   await attendance.save();
-  res.status(200).json(new ApiResponse(200, attendance, `Correction approved and moved to ${nextStatus}`));
+  res.status(200).json(new ApiResponse(200, attendance, 'Correction approved successfully'));
 });
 
 export const rejectCorrection = asyncHandler(async (req, res) => {
